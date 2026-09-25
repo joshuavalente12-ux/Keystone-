@@ -1,0 +1,65 @@
+name: Build Keystone
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  APP_ID: com.joshuaval.keystone
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Create upload key (first run only)
+        if: hashFiles('upload-key.jks') == ''
+        env:
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ ${#KEY_PASSWORD} -lt 6 ]; then echo "Add a KEY_PASSWORD secret (6+ characters) first"; exit 1; fi
+          keytool -genkeypair -keystore upload-key.jks -storetype PKCS12 \
+            -alias upload -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" -dname "CN=Keystone"
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add upload-key.jks
+          git commit -m "Add upload key"
+          git push
+
+      - name: Build signed app
+        env:
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir project && unzip -q Keystone.zip -d project && cd project
+          sed -i "s/applicationId = \".*\"/applicationId = \"$APP_ID\"/" app/build.gradle.kts
+          sed -i "s/versionCode = 1$/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
+          gradle bundleRelease assembleRelease \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/upload-key.jks" \
+            -Pandroid.injected.signing.store.password="$KEY_PASSWORD" \
+            -Pandroid.injected.signing.key.alias=upload \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: for-google-play
+          path: project/app/build/outputs/bundle/release/*.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: install-on-phone
+          path: project/app/build/outputs/apk/release/*.apk
