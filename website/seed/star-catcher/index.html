@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Star Catcher</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d1a; overflow: hidden; touch-action: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+let W, H;
+function resize() { W = c.width = innerWidth * devicePixelRatio; H = c.height = innerHeight * devicePixelRatio; }
+addEventListener('resize', resize); resize();
+
+const keys = {};
+addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; if (state !== 'play') start(); });
+addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+let pointerX = null;
+c.addEventListener('pointerdown', (e) => { pointerX = e.clientX * devicePixelRatio; if (state !== 'play') start(); });
+c.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') pointerX = e.clientX * devicePixelRatio; });
+c.addEventListener('pointerup', () => { pointerX = null; });
+
+let state = 'title', score, lives, items, player, spawnT, best = 0, t = 0;
+const bg = Array.from({ length: 80 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 2 + .5 }));
+
+function start() {
+  state = 'play'; score = 0; lives = 3; items = []; spawnT = 0;
+  player = { x: W / 2, w: 110 * devicePixelRatio, h: 22 * devicePixelRatio };
+}
+
+function star(x, y, r, color) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI / 5 - Math.PI / 2 + t * 2;
+    const rr = i % 2 ? r * .45 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.fillStyle = color; ctx.fill();
+}
+
+function update(dt) {
+  const speed = 900 * devicePixelRatio * dt;
+  if (keys.arrowleft || keys.a) player.x -= speed;
+  if (keys.arrowright || keys.d) player.x += speed;
+  if (pointerX !== null) player.x += (pointerX - player.x) * Math.min(1, dt * 14);
+  player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
+
+  spawnT -= dt;
+  if (spawnT <= 0) {
+    spawnT = Math.max(.25, .9 - score / 120);
+    const rock = Math.random() < .28 + Math.min(.2, score / 300);
+    items.push({ x: Math.random() * (W - 40) + 20, y: -30, v: (180 + Math.random() * 120 + score * 3) * devicePixelRatio, rock, r: (rock ? 16 : 14) * devicePixelRatio });
+  }
+  const py = H - 60 * devicePixelRatio;
+  for (const it of items) {
+    it.y += it.v * dt;
+    if (!it.hit && it.y + it.r > py && it.y - it.r < py + player.h && Math.abs(it.x - player.x) < player.w / 2 + it.r * .6) {
+      it.hit = true;
+      if (it.rock) { lives--; if (lives <= 0) { state = 'over'; best = Math.max(best, score); } }
+      else score++;
+    }
+  }
+  items = items.filter((it) => !it.hit && it.y < H + 40);
+}
+
+function draw() {
+  ctx.fillStyle = '#0b0d1a'; ctx.fillRect(0, 0, W, H);
+  for (const s of bg) {
+    ctx.fillStyle = `rgba(255,255,255,${.3 + .3 * Math.sin(t * 2 + s.x * 20)})`;
+    ctx.fillRect(s.x * W, ((s.y + t * .02 * s.s) % 1) * H, s.s * devicePixelRatio, s.s * devicePixelRatio);
+  }
+  const u = devicePixelRatio;
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  if (state !== 'play') {
+    ctx.font = `bold ${44 * u}px system-ui, sans-serif`;
+    ctx.fillText(state === 'over' ? 'Game over' : 'Star Catcher', W / 2, H / 2 - 30 * u);
+    ctx.font = `${18 * u}px system-ui, sans-serif`;
+    ctx.fillStyle = '#b9bfe6';
+    ctx.fillText(state === 'over' ? `Score ${score} · Best ${best}` : 'Catch stars, dodge rocks', W / 2, H / 2 + 10 * u);
+    ctx.fillText('Press any key or tap to play', W / 2, H / 2 + 44 * u);
+    star(W / 2, H / 2 - 110 * u, 26 * u, '#ffd34d');
+    return;
+  }
+  for (const it of items) {
+    if (it.rock) {
+      ctx.fillStyle = '#7a6a5c'; ctx.beginPath(); ctx.arc(it.x, it.y, it.r, 0, 7); ctx.fill();
+      ctx.fillStyle = '#5c4f44'; ctx.beginPath(); ctx.arc(it.x - it.r * .3, it.y - it.r * .2, it.r * .3, 0, 7); ctx.fill();
+    } else star(it.x, it.y, it.r, '#ffd34d');
+  }
+  const py = H - 60 * u;
+  const grd = ctx.createLinearGradient(0, py, 0, py + player.h);
+  grd.addColorStop(0, '#8b7bff'); grd.addColorStop(1, '#5b4bdb');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.roundRect(player.x - player.w / 2, py, player.w, player.h, 10 * u); ctx.fill();
+  ctx.textAlign = 'left'; ctx.font = `bold ${22 * u}px system-ui, sans-serif`; ctx.fillStyle = '#fff';
+  ctx.fillText(`★ ${score}`, 18 * u, 36 * u);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#ff6b8a';
+  ctx.fillText('♥'.repeat(lives), W - 18 * u, 36 * u);
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now; t += dt;
+  if (state === 'play') update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

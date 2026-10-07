@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keystone Arcade</title>
+<meta name="description" content="Post your games and play games made by other people.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237c6cff'/><path d='M9 12h14v10a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2z' fill='white'/><circle cx='13' cy='17' r='2' fill='%237c6cff'/><circle cx='19' cy='17' r='2' fill='%237c6cff'/></svg>">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/">
+    <span class="logo" aria-hidden="true">▶</span>
+    <span>Keystone <b>Arcade</b></span>
+  </a>
+  <form class="search" id="search" role="search">
+    <input type="search" name="q" placeholder="Search games or creators" aria-label="Search games">
+  </form>
+  <nav id="nav" class="nav"></nav>
+</header>
+<main id="view" class="view" tabindex="-1"></main>
+<footer class="footer">Made by players, for players. Share what you build.</footer>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "keystone-arcade",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A website where people post their games for others to play",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2"
+  }
+}
