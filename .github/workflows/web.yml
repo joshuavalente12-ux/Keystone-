@@ -1,0 +1,39 @@
+name: Build Keystone (web)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Keystone.zip"
+      - "keystone-web/**"
+      - ".github/workflows/web.yml"
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: keystone-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Build and test
+        run: gradle --no-daemon jsNodeTest jsBrowserDistribution
+
+      - name: Package
+        run: cd build/dist/js/productionExecutable && zip ../../../../keystone-web.zip index.html keystone.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keystone-web
+          path: keystone-web/keystone-web.zip
