@@ -31,7 +31,7 @@ jobs:
         run: gradle --no-daemon jsNodeTest jsBrowserDistribution
 
       - name: Package
-        run: cd build/dist/js/productionExecutable && zip ../../../../keystone-web.zip index.html keystone.js
+        run: cd build/dist/js/productionExecutable && zip -r ../../../../keystone-web.zip index.html keystone.js skiko.js skiko.wasm fonts res
 
       - uses: actions/upload-artifact@v4
         with:

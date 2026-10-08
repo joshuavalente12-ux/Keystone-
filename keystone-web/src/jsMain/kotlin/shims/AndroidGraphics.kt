@@ -10,9 +10,14 @@ import org.jetbrains.skia.ImageInfo
  */
 class Bitmap private constructor(val width: Int, val height: Int) {
     val pixels = IntArray(width * height)
+    private val info = ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL)
     val skia = org.jetbrains.skia.Bitmap().apply {
-        allocPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL))
+        check(allocPixels(info)) { "Couldn't allocate a ${width}x$height bitmap" }
+        erase(0)
     }
+    /** Writes into the bitmap's own pixel memory (installPixels would hand Skia temporary memory). */
+    private val skiaCanvas = org.jetbrains.skia.Canvas(skia)
+    private val copyPaint = org.jetbrains.skia.Paint().apply { blendMode = org.jetbrains.skia.BlendMode.SRC }
     private var dirty = true
 
     enum class Config { ARGB_8888, RGB_565, ALPHA_8 }
@@ -57,7 +62,9 @@ class Bitmap private constructor(val width: Int, val height: Int) {
             bytes[i * 4 + 2] = c.toByte()
             bytes[i * 4 + 3] = (c ushr 24).toByte()
         }
-        skia.installPixels(bytes)
+        val img = org.jetbrains.skia.Image.makeRaster(info, bytes, width * 4)
+        skiaCanvas.drawImage(img, 0f, 0f, copyPaint)
+        img.close()
         skia.notifyPixelsChanged()
     }
 

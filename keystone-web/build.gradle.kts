@@ -41,6 +41,17 @@ val soundLoopWeb = """
             return
 """.trimIndent()
 
+/**
+ * Title screen wording that names Google Play. On the web, Save and Load keep a backup of
+ * the adventure (in the player's Keystone Arcade account when playing there).
+ */
+val webWording = mapOf(
+    "Save and Load use your Google cloud save." to "Save backs up your adventure. Load brings the backup back.",
+    "Save and Load need Google Play Games sign-in." to "Save backs up your adventure. Load brings the backup back.",
+    "Replace the adventure on this phone with your cloud save?" to "Replace your adventure with your saved backup?",
+    "your cloud save is replaced the next time you save." to "your backup is replaced the next time you save.",
+)
+
 val extractGameSources by tasks.registering(Sync::class) {
     inputs.file(gameZip)
     from(zipTree(gameZip)) {
@@ -56,6 +67,14 @@ val extractGameSources by tasks.registering(Sync::class) {
         val indented = soundLoop.prependIndent("            ").trimStart()
         check(text.contains(indented)) { "Sound.kt's playback loop changed; update soundLoop in keystone-web/build.gradle.kts" }
         sound.writeText(text.replace(indented, soundLoopWeb.prependIndent("            ").trimStart()))
+
+        val main = gameSources.get().file("com/keystone/rpg/MainActivity.kt").asFile
+        var mainText = main.readText()
+        for ((from, to) in webWording) {
+            check(mainText.contains(from)) { "MainActivity.kt no longer says \"$from\"; update webWording in keystone-web/build.gradle.kts" }
+            mainText = mainText.replace(from, to)
+        }
+        main.writeText(mainText)
     }
 }
 

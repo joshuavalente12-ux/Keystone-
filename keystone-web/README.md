@@ -1,25 +1,41 @@
 # Keystone for the web
 
-Builds Keystone to run in a web browser (WebGL), from the **same Kotlin code** as the
-Android app. The game sources are read straight out of `../Keystone.zip`, so uploading a
-new zip updates the web version too.
+Builds Keystone to run in a web browser from the **same Kotlin code** as the Android app:
+the title screen, intro, class and character creation, the 3D world, HUD, map, menus,
+sound and saving. The game sources are read straight out of `../Keystone.zip`, so
+uploading a new zip updates the web version too.
 
 ## How it works
 
-- `build.gradle.kts` unpacks the game's `.kt` files from `Keystone.zip` and compiles them
-  with Kotlin/JS. Android-only screens and services (`MainActivity`, `CharacterScreen`,
-  `SphereGridUi`, `TitleArt`, `CloudSave`, `Sound`) are left out.
+- `build.gradle.kts` unpacks every game `.kt` file (except Google Play's `CloudSave.kt`),
+  the images and music from `Keystone.zip`, and generates the `R` class from its `res/`
+  folder. Two things are adapted as text while unpacking, and the build stops with a
+  message if the Android code changes under them:
+  - `Sound.kt`'s playback loop, which the browser pulls a block at a time instead
+  - title-screen wording that mentions Google Play
+- The Compose screens run on Compose Multiplatform (1.7.3, drawn with Skia/WebAssembly)
+  on a transparent layer; the 3D world runs on a WebGL canvas underneath.
 - `src/jsMain/kotlin/shims/` provides browser versions of the Android and Java pieces the
   game uses, so the game files compile **unchanged**:
-  - `android.opengl.GLES20` on WebGL 1, and `android.opengl.Matrix` ported from AOSP
-  - `SharedPreferences` on browser storage (saves keep working)
+  - `GLES20` on WebGL, `Matrix` ported from AOSP, `GLSurfaceView` and `AndroidView`
+  - `Bitmap`, `Canvas` text and `Paint` on Skia, `painterResource` for the drawables
+  - `AudioTrack` (Web Audio) and `MediaPlayer` (HTML audio)
+  - `SharedPreferences` on browser storage
   - `java.util.Random` with the JVM's exact algorithm (same treasure and quest placement
     as the phone; checked by `src/jsTest`)
-  - `ByteBuffer`, the concurrent collections, and a background-task queue that runs chunk
-    building a few milliseconds per frame
-  - the small parts of Compose the game logic uses (state holders, `Color`, `Offset`)
-- `src/jsMain/kotlin/com/keystone/rpg/WebMain.kt` is the browser host: canvas, frame loop,
-  keyboard, mouse (pointer lock) and touch controls, and a simple HUD.
+  - `ByteBuffer`, threads, executors and concurrent collections on a frame-sliced queue
+- `WebCloudSave.kt` keeps Save / Load working: Save backs the adventure up, Load restores
+  it, and a dead hardcore hero's backup is buried, as on Android.
+- `WebMain.kt` is the browser host: canvases, frame loop, fonts and images, and keyboard
+  and mouse on top of the game's own touch controls.
+- `src/jsMain/resources/fonts/` holds small subsets of Noto Sans, Noto Sans Symbols and
+  Twemoji (licenses next to them), since a browser's Skia has no system fonts.
+
+## Saving on Keystone Arcade
+
+The site's player gives games a `localStorage` that the site keeps: in the player's
+account when logged in, otherwise in their browser. Keystone's saves go there, so
+progress follows the player between devices. The title screen shows who is signed in.
 
 ## Build
 
@@ -29,19 +45,13 @@ gradle jsBrowserDistribution   # output: build/dist/js/productionExecutable/
 gradle jsNodeTest              # checks the Random port against the JVM
 ```
 
-Open `build/dist/js/productionExecutable/index.html` through a local web server, or zip
-`index.html` + `keystone.js` and post it on Keystone Arcade as a browser game.
-
-GitHub Actions (`.github/workflows/web.yml`) builds this on every push to `main` that
-touches `Keystone.zip` or this folder, and attaches `keystone-web.zip` to the run.
+To post it on Keystone Arcade, zip `index.html`, `keystone.js`, `skiko.js`,
+`skiko.wasm`, `fonts/` and `res/` from the output folder and post the zip as an
+"In the browser" game. GitHub Actions (`.github/workflows/web.yml`) builds this zip on
+every push to `main` that touches `Keystone.zip` or this folder.
 
 ## Controls
 
-WASD / arrows move · mouse looks (click the game first) · Shift run · Space jump ·
-left click attack · E use · V camera · 1-4 quick items. On phones: left half walks,
-right half looks, plus on-screen buttons.
-
-## Not done yet
-
-Title / class / character screens, the full HUD and menus, sound and music, saving to the
-player's Keystone Arcade account.
+The on-screen touch controls work as on the phone. On a computer also: WASD / arrows
+move · Shift run · Space jump · E or F use · V camera · 1-4 quick items · right click
+captures the mouse for looking (Esc lets go), then left click attacks.

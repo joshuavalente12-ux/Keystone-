@@ -7,6 +7,7 @@ import android.opengl.GlHost
 import android.view.View
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,6 +16,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.WebImages
 import androidx.compose.ui.window.ComposeViewport
@@ -22,7 +26,6 @@ import java.util.concurrent.WebTasks
 import kotlinx.browser.document
 import kotlinx.browser.window
 import org.jetbrains.skia.FontMgr
-import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.Image
 import org.jetbrains.skiko.wasm.onWasmReady
 import org.khronos.webgl.ArrayBuffer
@@ -138,8 +141,27 @@ private fun gameOf(renderer: Any): Game? {
     return null
 }
 
-private fun loadImages(): Promise<Unit> {
-    val loads = WebResources.drawables.map { id ->
+private fun fetchBytes(url: String): Promise<ByteArray> =
+    window.fetch(url)
+        .then { r: Response -> r.arrayBuffer() }
+        .then { buf: ArrayBuffer -> Int8Array(buf).unsafeCast<ByteArray>() }
+
+/** Emoji and symbol fonts (only the characters the game uses), bundled under fonts/. */
+private var emojiFont: ByteArray? = null
+private var symbolFont: ByteArray? = null
+private var textFont: ByteArray? = null
+private var textBoldFont: ByteArray? = null
+
+private fun typeface(bytes: ByteArray?) = bytes?.let { FontMgr.default.makeFromData(org.jetbrains.skia.Data.makeFromBytes(it)) }
+
+private fun loadAssets(): Promise<Unit> {
+    val fonts = listOf(
+        fetchBytes("fonts/KeystoneEmoji.ttf").then { emojiFont = it },
+        fetchBytes("fonts/KeystoneSymbols.ttf").then { symbolFont = it },
+        fetchBytes("fonts/KeystoneText-400.ttf").then { textFont = it },
+        fetchBytes("fonts/KeystoneText-700.ttf").then { textBoldFont = it },
+    )
+    val loads = fonts + WebResources.drawables.map { id ->
         val url = WebResources.files.getValue(id)
         window.fetch(url)
             .then { r: Response -> r.arrayBuffer() }
@@ -148,7 +170,13 @@ private fun loadImages(): Promise<Unit> {
                 WebImages.byId[id] = Image.makeFromEncoded(bytes).toComposeImageBitmap()
             }
     }
-    return Promise.all(loads.toTypedArray()).then { }
+    return Promise.all(loads.toTypedArray()).then {
+        // Text drawn straight on Skia canvases (map labels, skill grid) needs real typefaces:
+        // a browser's Skia has no system fonts.
+        WebFonts.regular = typeface(textFont)
+        WebFonts.bold = typeface(textBoldFont)
+        WebFonts.fallbacks = listOfNotNull(typeface(emojiFont), typeface(symbolFont))
+    }
 }
 
 private fun screenConfig() = Configuration(window.innerWidth, window.innerHeight)
@@ -193,14 +221,20 @@ fun main() = onWasmReady {
     resizeGl()
     window.addEventListener("resize", { resizeGl() })
 
+    // What MainActivity does on Android: start saving, and back the save up on leaving.
+    webContext.keystoneActivity()?.let { activity ->
+        CloudSave.start(activity)
+        document.addEventListener("visibilitychange", {
+            if (document.asDynamic().visibilityState == "hidden") CloudSave.upload(activity)
+        })
+    }
+
     GlHost.onRenderer = { r -> gameOf(r)?.let { DesktopInput.game = it } }
     val ui = document.getElementById("ui") as HTMLElement
     DesktopInput.install(ui)
 
-    WebFonts.regular = FontMgr.default.matchFamilyStyle(null, FontStyle.NORMAL)
-    WebFonts.bold = FontMgr.default.matchFamilyStyle(null, FontStyle.BOLD)
 
-    loadImages().then {
+    loadAssets().then {
         status("")
         ComposeViewport(ui) {
             var config by remember { mutableStateOf(screenConfig()) }
@@ -214,12 +248,22 @@ fun main() = onWasmReady {
                 LocalView provides View(webContext),
                 LocalConfiguration provides config,
             ) {
-                KeystoneApp()
+                // Emoji and symbols aren't in Compose's built-in web font: preload ours as
+                // fallbacks before the first screen, so nothing shows as empty boxes.
+                val resolver = LocalFontFamilyResolver.current
+                var fontsReady by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    for ((name, bytes) in listOf("KeystoneEmoji" to emojiFont, "KeystoneSymbols" to symbolFont)) {
+                        if (bytes != null) resolver.preload(FontFamily(Font(name, bytes)))
+                    }
+                    fontsReady = true
+                }
+                if (fontsReady) KeystoneApp()
             }
         }
         window.requestAnimationFrame(::frame)
     }.catch { e ->
         console.error(e)
-        status("Keystone couldn't load its images.", error = true)
+        status("Keystone couldn't load its images and fonts.", error = true)
     }
 }
