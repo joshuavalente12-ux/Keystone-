@@ -10,6 +10,11 @@ import kotlin.math.PI
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.FIELD)
 annotation class Volatile
 
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER)
+annotation class Synchronized
+
+class InterruptedException : Exception()
+
 /** Browsers run the game on one thread, so a lock is never contended. */
 inline fun <R> synchronized(lock: Any, block: () -> R): R = block()
 
@@ -43,6 +48,9 @@ class Thread(val target: Runnable? = null, val name: String = "") {
         val t = target ?: return
         java.util.concurrent.WebTasks.post { t.run() }
     }
+
+    fun join(millis: Long = 0) {}
+    fun interrupt() {}
 
     companion object {
         const val MIN_PRIORITY = 1

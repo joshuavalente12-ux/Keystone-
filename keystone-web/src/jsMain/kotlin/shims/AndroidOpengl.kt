@@ -390,8 +390,11 @@ object GLES20 {
     fun glDrawArrays(mode: Int, first: Int, count: Int) = gl.drawArrays(mode, first, count)
 }
 
-/** Only the parts of GLSurfaceView the renderer's interfaces need; the browser host drives frames. */
-open class GLSurfaceView {
+/**
+ * GLSurfaceView for the web. All views share one WebGL canvas behind the Compose layer;
+ * whichever view is on screen (attached by AndroidView) and not paused gets the frames.
+ */
+open class GLSurfaceView(context: android.content.Context) : android.view.View(context), androidx.compose.ui.viewinterop.WebHostedView {
     interface Renderer {
         fun onSurfaceCreated(gl: GL10?, config: EGLConfig?)
         fun onSurfaceChanged(gl: GL10?, width: Int, height: Int)
@@ -402,8 +405,100 @@ open class GLSurfaceView {
         fun chooseConfig(egl: EGL10, display: EGLDisplay): EGLConfig
     }
 
+    var renderer: Renderer? = null
+        private set
+    var renderMode = RENDERMODE_CONTINUOUSLY
+    var preserveEGLContextOnPause = false
+    var paused = false
+        private set
+    private val queued = ArrayList<() -> Unit>()
+
+    fun setEGLContextClientVersion(version: Int) {}
+    fun setEGLConfigChooser(chooser: EGLConfigChooser) {}
+
+    fun setRenderer(r: Renderer) {
+        renderer = r
+        GlHost.rendererCreated(r)
+    }
+
+    fun onPause() {
+        paused = true
+    }
+
+    fun onResume() {
+        paused = false
+    }
+
+    fun queueEvent(r: java.util.concurrent.Runnable) {
+        queued += { r.run() }
+    }
+
+    fun requestRender() {}
+
+    internal fun runQueued() {
+        if (queued.isEmpty()) return
+        val list = ArrayList(queued)
+        queued.clear()
+        for (q in list) q()
+    }
+
+    override fun attach() = GlHost.attach(this)
+    override fun detach() = GlHost.detach(this)
+
     companion object {
         const val RENDERMODE_WHEN_DIRTY = 0
         const val RENDERMODE_CONTINUOUSLY = 1
+    }
+}
+
+/** Drives the 3D canvas: picks the visible GLSurfaceView and gives it surface events and frames. */
+object GlHost {
+    lateinit var canvas: org.w3c.dom.HTMLCanvasElement
+    /** Called with each new renderer, so the web host can find the game it draws. */
+    var onRenderer: ((GLSurfaceView.Renderer) -> Unit)? = null
+
+    private val views = ArrayList<GLSurfaceView>()
+    private var current: GLSurfaceView? = null
+    private var width = 0
+    private var height = 0
+
+    fun rendererCreated(r: GLSurfaceView.Renderer) {
+        onRenderer?.invoke(r)
+    }
+
+    fun attach(v: GLSurfaceView) {
+        views.remove(v)
+        views += v
+    }
+
+    fun detach(v: GLSurfaceView) {
+        views.remove(v)
+        if (current === v) current = null
+    }
+
+    val active: GLSurfaceView? get() = views.lastOrNull { !it.paused && it.renderer != null }
+
+    fun resize(w: Int, h: Int) {
+        width = w
+        height = h
+        current?.renderer?.onSurfaceChanged(null, w, h)
+    }
+
+    fun frame() {
+        val v = active
+        if (v == null) {
+            if (current != null) current = null
+            GLES20.glClearColor(0f, 0f, 0f, 1f)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            return
+        }
+        val r = v.renderer ?: return
+        if (current !== v) {
+            current = v
+            r.onSurfaceCreated(null, null)
+            r.onSurfaceChanged(null, width, height)
+        }
+        v.runQueued()
+        r.onDrawFrame(null)
     }
 }

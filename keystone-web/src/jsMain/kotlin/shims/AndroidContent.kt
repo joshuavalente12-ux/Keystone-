@@ -114,6 +114,9 @@ private class WebPrefs(name: String) : SharedPreferences {
 open class Context {
     open val applicationContext: Context get() = this
     open val packageName: String get() = "com.keystone.rpg"
+    val resources = android.content.res.Resources()
+
+    fun getString(id: Int): String = com.keystone.rpg.WebResources.strings[id] ?: ""
 
     fun getSharedPreferences(name: String, mode: Int): SharedPreferences = WebPrefs(name)
 
